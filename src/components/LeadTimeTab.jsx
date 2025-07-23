@@ -24,7 +24,7 @@ export default function LeadTimeTab() {
       setError(null);
       
       console.log('📡 Fetching lead time data from backend...');
-      const response = await fetch('https://backend-1-n2xg.onrender.com');
+      const response = await fetch('https://backend-1-n2xg.onrender.com/lead-time-analysis');
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
