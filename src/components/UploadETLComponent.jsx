@@ -112,7 +112,7 @@ export default function UploadETLComponent({ onETLComplete }) {
 
       setUploadStatus('processing');
 
-      const response = await fetch('http://localhost:8000/run_etl/', {
+      const response = await fetch('https://backend-m6sp.onrender.com/run_etl/', {
         method: 'POST',
         body: formData,
       });
