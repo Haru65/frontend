@@ -37,7 +37,7 @@ export default function ParallelizationTab() {
     setError(null);
     
     console.log('📡 Making request to /optimized-parallelization');
-    const response = await fetch('https://backend-m6sp.onrender.com/optimized-parallelization');
+    const response = await fetch('https://backend-1-n2xg.onrender.com/optimized-parallelization');
     
     // Get raw response for debugging
     const responseText = await response.text();

@@ -18,7 +18,7 @@ import LeadTimeTab from './components/LeadTimeTab';
 import ParallelizableTaskTab from './components/ParallelizableTaskTab';
 import UploadETLComponent from './components/UploadETLComponent';
 
-const API_BASE = 'https://backend-m6sp.onrender.com';
+const API_BASE = 'https://backend-1-n2xg.onrender.com';
 
 function App() {
   // Initialize state with localStorage persistence
