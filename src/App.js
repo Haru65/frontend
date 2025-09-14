@@ -17,11 +17,17 @@ import DashboardTab from './components/DashboardTab';
 import LeadTimeTab from './components/LeadTimeTab';
 import ParallelizableTaskTab from './components/ParallelizableTaskTab';
 import UploadETLComponent from './components/UploadETLComponent';
+import Login from './components/Login';
+import AdminDashboard from './components/AdminDashboard';
 
-const API_BASE = 'https://backend-1-n2xg.onrender.com';
+const API_BASE = 'http://localhost:8000';
 
 function App() {
   // Initialize state with localStorage persistence
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('isAuthenticated') === 'true';
+  });
+
   const [activeTab, setActiveTab] = useState(() => {
     const storedETLStatus = localStorage.getItem('etlCompleted') === 'true';
     return storedETLStatus ? 'home' : 'upload';
@@ -45,6 +51,12 @@ function App() {
   const [parallelizableData, setParallelizableData] = useState(() => {
     const cached = localStorage.getItem('cachedDashboardData');
     return cached ? JSON.parse(cached).parallelizableData : [];
+  });
+  
+  // **NEW: Add state for raw parallelization data**
+  const [parallelizationRawData, setParallelizationRawData] = useState(() => {
+    const cached = localStorage.getItem('cachedDashboardData');
+    return cached ? JSON.parse(cached).parallelizationRawData : [];
   });
   
   const [loading, setLoading] = useState(false);
@@ -178,6 +190,7 @@ function App() {
     }, 2000);
   };
 
+  // **UPDATED: Enhanced fetchDashboardData with parallelization endpoint**
   const fetchDashboardData = async (useCache = true) => {
     if (!etlCompleted) return;
 
@@ -196,29 +209,55 @@ function App() {
       
       console.log('Fetching fresh data from:', API_BASE);
       
-      // Fetch data from your FastAPI backend
+      // **UPDATED: Add parallelization endpoint to requests**
       const requests = [
         axios.get(`${API_BASE}/dashboard-summary`).catch(() => ({ data: null })),
         axios.get(`${API_BASE}/lead-time`).catch(() => ({ data: { data: [] } })),
-        axios.get(`${API_BASE}/stock-vs-demand`).catch(() => ({ data: { data: [] } }))
+        axios.get(`${API_BASE}/stock-vs-demand`).catch(() => ({ data: { data: [] } })),
+        axios.get(`${API_BASE}/optimized-parallelization`).catch(() => ({ data: { data: [] } })) // **NEW**
       ];
 
-      const [summaryResponse, leadTimeResponse, stockResponse] = await Promise.all(requests);
+      const [summaryResponse, leadTimeResponse, stockResponse, parallelizationResponse] = await Promise.all(requests);
 
       console.log('Dashboard Summary Response:', summaryResponse.data);
       console.log('Lead Time Response:', leadTimeResponse.data);
       console.log('Stock Response:', stockResponse.data);
+      console.log('Parallelization Response:', parallelizationResponse.data); // **NEW**
 
       // Process responses
       const newDashboardData = summaryResponse.data?.summary || summaryResponse.data;
       const newLeadTimeData = leadTimeResponse.data?.data || leadTimeResponse.data || [];
       const newStockData = stockResponse.data?.data || stockResponse.data || [];
+      const newParallelizationData = parallelizationResponse.data?.data || []; // **NEW**
       
-      // Process parallelizable data
-      const leadData = newLeadTimeData;
+      // **UPDATED: Process parallelizable data with real parallelization data**
       let newParallelizableData = [];
-      if (Array.isArray(leadData)) {
-        newParallelizableData = leadData.map(item => ({
+      if (Array.isArray(newParallelizationData) && newParallelizationData.length > 0) {
+        // Use real parallelization data from optimized_parallelization table
+        console.log(`Processing ${newParallelizationData.length} parallelization records`);
+        newParallelizableData = newParallelizationData.map(item => ({
+          task_id: `${item.item_1}-${item.item_2}`,
+          task_name: `${item.item_1} + ${item.item_2}`,
+          item_1: item.item_1,
+          item_2: item.item_2,
+          current_time: item.sequential_time_days || 0,
+          parallel_time: item.parallel_time_days || 0,
+          savings: item.time_saved_days || 0,
+          efficiency_gain: item.efficiency_gain_pct || 0,
+          can_run_parallel: item.can_run_parallel,
+          process_conflicts: item.process_conflicts || '',
+          machine_conflicts: item.machine_conflicts || '',
+          item_1_processes: item.item_1_processes || '',
+          item_2_processes: item.item_2_processes || '',
+          item_1_urgency: item.item_1_urgency || 'LOW',
+          item_2_urgency: item.item_2_urgency || 'LOW',
+          item_1_machines: item.item_1_machines || 'GENERAL',
+          item_2_machines: item.item_2_machines || 'GENERAL'
+        }));
+      } else if (Array.isArray(newLeadTimeData)) {
+        // Fallback to lead time data transformation (your existing code)
+        console.log('Using fallback lead time data for parallelizable tasks');
+        newParallelizableData = newLeadTimeData.map(item => ({
           task_id: item.ITEM_CODE || 'Unknown',
           task_name: `Production: ${item.ITEM_CODE || 'Unknown'}`,
           current_time: item.LEAD_TIME_SERIAL || 0,
@@ -227,16 +266,18 @@ function App() {
           efficiency_gain: item.EFFICIENCY_GAIN_PCT || 0,
           complexity: item.EFFICIENCY_GAIN_PCT > 25 ? 'High' : item.EFFICIENCY_GAIN_PCT > 15 ? 'Medium' : 'Low',
           dependencies: Math.floor(Math.random() * 3),
-          resource_requirement: Math.ceil((item.LEAD_TIME_SERIAL || 0) / 20)
+          resource_requirement: Math.ceil((item.LEAD_TIME_SERIAL || 0) / 20),
+          can_run_parallel: item.EFFICIENCY_GAIN_PCT > 0
         }));
       }
 
-      // Cache the data
+      // **UPDATED: Enhanced cache data**
       const cacheData = {
         dashboardData: newDashboardData,
         leadTimeData: newLeadTimeData,
         stockData: newStockData,
-        parallelizableData: newParallelizableData
+        parallelizableData: newParallelizableData,
+        parallelizationRawData: newParallelizationData // **NEW: Store raw data**
       };
       
       localStorage.setItem('cachedDashboardData', JSON.stringify(cacheData));
@@ -247,12 +288,13 @@ function App() {
       setLeadTimeData(newLeadTimeData);
       setStockData(newStockData);
       setParallelizableData(newParallelizableData);
+      setParallelizationRawData(newParallelizationData); // **NEW**
       
       const updateTime = new Date();
       setDataLastUpdated(updateTime);
       localStorage.setItem('dataLastUpdated', updateTime.toISOString());
       
-      console.log('Data cached and state updated');
+      console.log(`Data cached and state updated. Found ${newParallelizableData.length} parallelizable tasks`);
       
     } catch (error) {
       console.error('Error fetching data from backend:', error);
@@ -280,6 +322,7 @@ function App() {
     setLeadTimeData([]);
     setStockData([]);
     setParallelizableData([]);
+    setParallelizationRawData([]); // **NEW**
     setDataLastUpdated(null);
     setActiveTab('upload');
     setError(null);
@@ -334,6 +377,7 @@ function App() {
                 <li><code>GET /dashboard-summary</code></li>
                 <li><code>GET /lead-time</code></li>
                 <li><code>GET /stock-vs-demand</code></li>
+                <li><code>GET /optimized-parallelization</code></li> {/* **NEW** */}
               </ul>
             </ol>
           </div>
@@ -343,6 +387,10 @@ function App() {
         </div>
       </div>
     );
+  }
+
+  if (!isAuthenticated) {
+    return <Login onLogin={() => setIsAuthenticated(true)} />;
   }
 
   return (
@@ -401,8 +449,15 @@ function App() {
             >
               <Database size={20} />
             </button>
-            <button className="header-btn">
-              <Settings size={20} />
+            <button 
+              className="header-btn"
+              onClick={() => {
+                localStorage.removeItem('isAuthenticated');
+                setIsAuthenticated(false);
+              }}
+              title="Logout"
+            >
+              <Users size={20} />
             </button>
             <div className="last-updated">
               <span>{etlCompleted ? 'Last Updated' : 'No Data'}</span>
@@ -418,6 +473,14 @@ function App() {
         {/* Sidebar */}
         <aside className={`sidebar ${sidebarOpen ? 'sidebar-open' : ''}`}>
           <nav className="sidebar-nav">
+            <button
+              className={`nav-item ${getTabStatus('admin')}`}
+              onClick={() => handleTabChange('admin')}
+            >
+              <Settings size={20} />
+              <span>Admin Panel</span>
+            </button>
+
             <button
               className={`nav-item ${getTabStatus('upload')}`}
               onClick={() => handleTabChange('upload')}
@@ -473,6 +536,14 @@ function App() {
             >
               <TrendingUp size={20} />
               <span>Parallelizable Tasks</span>
+              {/* **NEW: Show parallelizable count badge** */}
+              {Array.isArray(parallelizableData) && parallelizableData.filter(item => 
+                item.can_run_parallel
+              ).length > 0 && etlCompleted && (
+                <span className="nav-badge success">
+                  {parallelizableData.filter(item => item.can_run_parallel).length}
+                </span>
+              )}
               {!etlCompleted && <span className="nav-lock">🔒</span>}
             </button>
           </nav>
@@ -486,6 +557,13 @@ function App() {
                     <span className="status-title">System Ready</span>
                     <p className="status-text">
                       {dataLastUpdated ? `Data from ${dataLastUpdated.toLocaleDateString()}` : 'Real-time data active'}
+                      {/* **NEW: Show parallelization status** */}
+                      {parallelizableData.length > 0 && (
+                        <>
+                          <br />
+                          <small>{parallelizableData.length} parallelizable tasks found</small>
+                        </>
+                      )}
                     </p>
                   </div>
                 </>
@@ -504,6 +582,9 @@ function App() {
 
         {/* Main Content */}
         <main className="main-content">
+          {activeTab === 'admin' && (
+            <AdminDashboard />
+          )}
           {activeTab === 'upload' && (
             <UploadETLComponent onETLComplete={handleETLComplete} />
           )}
@@ -529,6 +610,8 @@ function App() {
           {activeTab === 'parallelizable' && etlCompleted && (
             <ParallelizableTaskTab 
               leadTimeData={leadTimeData}
+              parallelizableData={parallelizableData}
+              parallelizationRawData={parallelizationRawData} // **NEW: Pass raw data**
             />
           )}
         </main>
